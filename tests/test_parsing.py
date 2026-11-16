@@ -2,6 +2,7 @@
 
 import io
 import math
+from pathlib import Path
 
 import pytest
 
@@ -104,6 +105,23 @@ def test_answer_csv_with_a_missing_value_is_rejected():
 def test_answer_csv_with_scores_instead_of_answers_is_rejected():
     with pytest.raises(ValueError, match="two columns of 1"):
         answer_columns(io.StringIO("baseline,ours\n83.1,84.2\n83.9,83.8\n"))
+
+
+# --- The sample files that ship with easyCI ----------------------------------
+
+SAMPLES = Path(__file__).parent.parent / "sample_data"
+
+
+def test_per_seed_sample_file():
+    columns = score_columns(SAMPLES / "per_seed.csv")
+    assert list(columns) == ["seed", "Baseline", "New model"]
+    assert len(columns["Baseline"]) == len(columns["New model"]) == 6
+
+
+def test_per_example_sample_file():
+    columns = answer_columns(SAMPLES / "per_example.csv")
+    assert list(columns) == ["Model A", "Model B"]
+    assert sum(columns["Model A"]) == 835 and sum(columns["Model B"]) == 850
 
 
 # --- Files in general --------------------------------------------------------

@@ -162,6 +162,12 @@ def show_runs_calculator(result, digits):
         f"approximation, and the noise is itself estimated from only "
         f"{result.summary_a.n} runs, so treat the answer as a guide."
     )
+    if needed < 10:
+        st.caption(
+            "Known limitation: when this recommends fewer than about 10 runs it is "
+            "optimistic. In easyCI's validation the real chance was 66% to 72%, not "
+            "80%, so add a run or two."
+        )
 
 
 def decimals_for(scores):

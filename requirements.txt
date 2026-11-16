@@ -1,7 +1,10 @@
-streamlit
-numpy
-scipy
-pandas
-plotly
-pytest
-matplotlib
+# The versions easyCI was built and tested with.
+streamlit==1.67.0
+numpy==2.5.5
+scipy==1.18.1
+pandas==3.1.1
+plotly==7.1.0
+
+# Only needed for the tests and the validation simulation.
+pytest==9.2.0
+matplotlib==3.11.2
