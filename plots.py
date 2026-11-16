@@ -40,7 +40,7 @@ def _style(fig, colours, height):
     return fig
 
 
-def runs_plot(a, b, name_a, name_b, paired, dark=False):
+def runs_plot(a, b, name_a, name_b, paired, dark=False, decimals=2):
     """One dot per run, one column per model, with a short line at each mean.
 
     In paired mode a thin grey line joins the two runs that shared a seed.
@@ -76,7 +76,7 @@ def runs_plot(a, b, name_a, name_b, paired, dark=False):
         fig.add_annotation(
             x=position + side,
             y=mean,
-            text=f"mean {mean:.2f}",
+            text=f"mean {mean:.{decimals}f}",
             showarrow=False,
             xanchor="right" if position == 0 else "left",
             font=dict(color=colours["ink"], size=13),
@@ -165,7 +165,7 @@ def accuracy_plot(result, name_a, name_b, dark=False):
     return _style(fig, colours, height=340)
 
 
-def difference_plot(result, name_a, name_b, dark=False, unit=""):
+def difference_plot(result, name_a, name_b, dark=False, unit="", decimals=2):
     """The confidence interval of the difference as a bar, with a line at zero.
 
     If the bar does not touch the zero line, "no difference" is not plausible.
@@ -183,7 +183,7 @@ def difference_plot(result, name_a, name_b, dark=False, unit=""):
             line=dict(color=colours["a"], width=4),
             hovertemplate=(
                 f"{percent}% confidence interval: "
-                f"{result.ci_low:.2f} to {result.ci_high:.2f}<extra></extra>"
+                f"{result.ci_low:.{decimals}f} to {result.ci_high:.{decimals}f}<extra></extra>"
             ),
         )
     )
@@ -193,7 +193,9 @@ def difference_plot(result, name_a, name_b, dark=False, unit=""):
             y=[0],
             mode="markers",
             marker=dict(color=colours["a"], size=13, line=dict(color=colours["surface"], width=2)),
-            hovertemplate=f"Observed difference: {result.difference:.2f}<extra></extra>",
+            hovertemplate=(
+                f"Observed difference: {result.difference:.{decimals}f}<extra></extra>"
+            ),
         )
     )
     fig.add_vline(x=0, line=dict(color=colours["muted"], width=1.5, dash="dash"))

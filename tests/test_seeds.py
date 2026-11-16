@@ -152,3 +152,8 @@ def test_paired_needs_equal_lengths():
 def test_missing_scores_are_rejected():
     with pytest.raises(ValueError, match="missing"):
         compare([83.1, float("nan"), 83.5], B)
+
+
+def test_infinite_scores_are_rejected():
+    with pytest.raises(ValueError, match="not numbers"):
+        compare([83.1, float("inf"), 83.5], B)

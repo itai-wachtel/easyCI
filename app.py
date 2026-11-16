@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from parsing import answers_from_csv, parse_scores, scores_from_csv
+from parsing import answer_columns, parse_scores, score_columns
 from plots import accuracy_plot, difference_plot, runs_plot
 from stats.examples import compare_examples
 from stats.seeds import compare
@@ -47,21 +47,47 @@ def load_seed_example(name):
     st.session_state.update(SEED_EXAMPLES[name])
 
 
-def load_scores_csv():
-    """Fill the score boxes from an uploaded CSV file."""
+def load_scores_csv(new_file=False):
+    """Fill the score boxes from two columns of the uploaded CSV file.
+
+    Runs when a file is uploaded (new_file=True: start with the first two
+    columns) and when the user picks a different column in one of the menus.
+    """
     file = st.session_state.csv_file
     st.session_state.csv_error = None
     if file is None:
         return
     try:
-        name_a, a, name_b, b = scores_from_csv(file)
-    except Exception as error:  # unreadable file, or not two number columns
+        columns = score_columns(file)
+    except ValueError as error:
         st.session_state.csv_error = str(error)
         return
+    titles = list(columns)
+    name_a = st.session_state.get("csv_column_a")
+    name_b = st.session_state.get("csv_column_b")
+    if new_file or name_a not in columns or name_b not in columns:
+        name_a, name_b = titles[0], titles[1]
+    st.session_state.csv_column_a = name_a
+    st.session_state.csv_column_b = name_b
     st.session_state.name_a = name_a
     st.session_state.name_b = name_b
-    st.session_state.text_a = ", ".join(str(score) for score in a)
-    st.session_state.text_b = ", ".join(str(score) for score in b)
+    st.session_state.text_a = ", ".join(str(score) for score in columns[name_a])
+    st.session_state.text_b = ", ".join(str(score) for score in columns[name_b])
+
+
+def read_scores(text, name):
+    """Turn one score box into numbers and say under the box what was read.
+
+    Returns None (after showing the error) if the text cannot be read.
+    """
+    try:
+        scores = parse_scores(text)
+    except ValueError as error:
+        st.error(f"{name}: {error}")
+        return None
+    if scores:
+        st.caption(f"{len(scores)} scores read.")
+    return scores
 
 
 def use_sample_answers():
@@ -85,7 +111,22 @@ def run_compare_examples(a, b, confidence):
 
 
 def format_p(p):
-    return "< 0.001" if p < 0.001 else f"{p:.3f}"
+    """Show a p-value with three meaningful digits: 0.0317, 0.128."""
+    return "< 0.001" if p < 0.001 else f"{p:.3g}"
+
+
+def decimals_for(scores):
+    """How many decimals to show: more when the scores are small numbers.
+
+    Scores like 83.5 need two decimals, but scores like 0.835 need four,
+    otherwise a difference of 0.007 would be shown as 0.01.
+    """
+    largest = max(abs(score) for score in scores)
+    if largest >= 10:
+        return 2
+    if largest >= 1:
+        return 3
+    return 4
 
 
 def format_d(d):
@@ -129,22 +170,39 @@ def seeds_screen():
         text_a = st.text_area(
             f"Scores of {name_a}", key="text_a", height=110, placeholder="83.1, 83.9, 83.5, ..."
         )
+        a = read_scores(text_a, name_a)
     with right:
         name_b = st.text_input("Name of the second model", key="name_b") or "Model B"
         text_b = st.text_area(
             f"Scores of {name_b}", key="text_b", height=110, placeholder="84.2, 83.8, 84.5, ..."
         )
-    st.caption("One score per training run, separated by commas, spaces or new lines.")
+        b = read_scores(text_b, name_b)
+    st.caption(
+        "One score per training run, separated by commas, spaces or new lines. "
+        "Write decimals with a point: 83.1, not 83,1."
+    )
 
     with st.expander("Or upload a CSV file"):
-        st.file_uploader(
+        file = st.file_uploader(
             "A file with one column of scores per model. The column titles become the names.",
             type="csv",
             key="csv_file",
             on_change=load_scores_csv,
+            args=[True],
         )
         if st.session_state.get("csv_error"):
             st.error(st.session_state.csv_error)
+        elif file is not None:
+            # Let the user say which column is which model. This matters when
+            # the file has other number columns, such as the seed.
+            titles = list(score_columns(file))
+            pick_a, pick_b = st.columns(2)
+            pick_a.selectbox(
+                "Column of the first model", titles, key="csv_column_a", on_change=load_scores_csv
+            )
+            pick_b.selectbox(
+                "Column of the second model", titles, key="csv_column_b", on_change=load_scores_csv
+            )
 
     st.header("Settings", divider="gray")
 
@@ -164,16 +222,18 @@ def seeds_screen():
 
     st.header("Results", divider="gray")
 
+    if a is None or b is None:
+        st.info("Fix the scores marked in red above to see the results.")
+        return
+    if not a or not b:
+        st.info("Paste the scores of both models above, or load an example.")
+        return
     try:
-        a = parse_scores(text_a)
-        b = parse_scores(text_b)
-        if not a or not b:
-            st.info("Paste the scores of both models above, or load an example.")
-            return
         result = run_compare(tuple(a), tuple(b), paired, higher_is_better, confidence)
     except ValueError as error:
         st.error(str(error))
         return
+    digits = decimals_for(a + b)
 
     if result.difference == 0:
         direction_text = f"{name_b} and {name_a} have the same average."
@@ -186,12 +246,12 @@ def seeds_screen():
 
     first, second, third = st.columns(3)
     with first:
-        st.metric(f"Difference ({name_b} − {name_a})", f"{result.difference:+.2f}")
+        st.metric(f"Difference ({name_b} − {name_a})", f"{result.difference:+.{digits}f}")
         st.caption(direction_text)
     with second:
         st.metric(
             f"{confidence:.0%} confidence interval",
-            f"{result.ci_low:.2f} to {result.ci_high:.2f}",
+            f"{result.ci_low:.{digits}f} to {result.ci_high:.{digits}f}",
         )
         st.caption("The plausible range of the true difference. If it includes 0, be careful.")
     with third:
@@ -217,8 +277,8 @@ def seeds_screen():
         ),
         hide_index=True,
         column_config={
-            "Mean": st.column_config.NumberColumn(format="%.2f"),
-            "Standard deviation": st.column_config.NumberColumn(format="%.2f"),
+            "Mean": st.column_config.NumberColumn(format=f"%.{digits}f"),
+            "Standard deviation": st.column_config.NumberColumn(format=f"%.{digits}f"),
         },
     )
 
@@ -228,14 +288,16 @@ def seeds_screen():
         if paired
         else "One dot per run. The short line is each model's mean."
     )
-    st.plotly_chart(runs_plot(a, b, name_a, name_b, paired, is_dark()), theme=None)
+    st.plotly_chart(runs_plot(a, b, name_a, name_b, paired, is_dark(), digits), theme=None)
 
     st.subheader("The difference")
     st.caption(
         f"The bar is the {confidence:.0%} confidence interval. "
         "If it does not touch the dashed line, the difference is plausibly real."
     )
-    st.plotly_chart(difference_plot(result, name_a, name_b, is_dark()), theme=None)
+    st.plotly_chart(
+        difference_plot(result, name_a, name_b, is_dark(), decimals=digits), theme=None
+    )
 
 
 # ------------------------------ Mode 2: one run per model, per test example ---
@@ -263,14 +325,19 @@ def examples_screen():
         return
 
     try:
-        name_a, a, name_b, b = answers_from_csv(source)
-        result = run_compare_examples(tuple(a), tuple(b), confidence)
+        columns = answer_columns(source)
     except ValueError as error:
         st.error(str(error))
         return
-    except Exception:  # not a readable CSV file at all
-        st.error("easyCI could not read this file. Is it a CSV file?")
-        return
+    titles = list(columns)
+    name_a, name_b = titles[0], titles[1]
+    if len(titles) > 2:
+        # More than two right/wrong columns (one may be the true label, for
+        # example), so the user has to say which two are the models.
+        pick_a, pick_b = st.columns(2)
+        name_a = pick_a.selectbox("Column of the first model", titles, index=0)
+        name_b = pick_b.selectbox("Column of the second model", titles, index=1)
+    result = run_compare_examples(tuple(columns[name_a]), tuple(columns[name_b]), confidence)
     table = result.table
 
     first, second, third = st.columns(3)
@@ -287,14 +354,14 @@ def examples_screen():
             f"{result.interval_b[0]:.1f}% to {result.interval_b[1]:.1f}%"
         )
     with third:
-        st.metric(f"Difference ({name_b} − {name_a})", f"{result.difference:+.1f} points")
+        st.metric(f"Difference ({name_b} − {name_a})", f"{result.difference:+.2f} points")
         st.caption(f"Measured on {table.n:,} test examples.")
 
     fourth, fifth, sixth = st.columns(3)
     with fourth:
         st.metric(
             f"{confidence:.0%} confidence interval",
-            f"{result.ci_low:.1f} to {result.ci_high:.1f}",
+            f"{result.ci_low:.2f} to {result.ci_high:.2f}",
         )
         st.caption("The plausible range of the true difference, in points.")
     with fifth:

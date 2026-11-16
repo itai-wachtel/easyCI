@@ -4,6 +4,12 @@ import re
 
 import pandas as pd
 
+# The ways a CSV file may write "correct" and "wrong".
+ANSWER_WORDS = {
+    "1": True, "1.0": True, "true": True, "yes": True,
+    "0": False, "0.0": False, "false": False, "no": False,
+}
+
 
 def parse_scores(text):
     """Turn text like "83.1, 83.9 83.5" into [83.1, 83.9, 83.5].
@@ -21,56 +27,53 @@ def parse_scores(text):
     return scores
 
 
-# The ways a CSV file may write "correct" and "wrong".
-ANSWER_WORDS = {
-    "1": True, "1.0": True, "true": True, "yes": True,
-    "0": False, "0.0": False, "false": False, "no": False,
-}
+def _read_csv(file):
+    """Open a CSV file as a table, with a clear error if that fails."""
+    # The page reads an uploaded file again on every click, so always go back
+    # to the start of the file first.
+    if hasattr(file, "seek"):
+        file.seek(0)
+    try:
+        return pd.read_csv(file)
+    except Exception:
+        raise ValueError("easyCI could not read this file. Is it a CSV file?") from None
 
 
-def _as_answers(column):
-    """Return a CSV column as a list of True/False, or None if it is not one."""
-    words = column.astype(str).str.strip().str.lower()
-    if column.isna().any() or not words.isin(ANSWER_WORDS).all():
-        return None
-    return words.map(ANSWER_WORDS).tolist()
+def score_columns(file):
+    """Read every column of numbers in a CSV file.
 
-
-def answers_from_csv(file):
-    """Read the first two right/wrong columns of a CSV file.
-
-    Each row is one test example; each column holds 1 (correct) or 0 (wrong)
-    for one model. Returns (name_a, answers_a, name_b, answers_b).
+    Returns a dictionary {column title: list of scores}. Empty cells at the
+    end of a column are dropped, so columns may differ in length. An empty
+    cell in the middle is kept as "missing", so that it is reported instead of
+    silently shifting the scores below it.
     """
-    table = pd.read_csv(file)
-    found = []
+    table = _read_csv(file)
+    columns = {}
+    for name in table.select_dtypes("number").columns:
+        last_filled = table[name].last_valid_index()
+        if last_filled is not None:  # skip columns that are completely empty
+            columns[str(name)] = table[name].loc[:last_filled].tolist()
+    if len(columns) < 2:
+        raise ValueError("The CSV file needs two columns of numbers, one per model.")
+    return columns
+
+
+def answer_columns(file):
+    """Read every right/wrong column in a CSV file.
+
+    Each row is one test example. A right/wrong column holds 1 (correct) or
+    0 (wrong) in every row; true/false and yes/no also work.
+    Returns a dictionary {column title: list of True/False}.
+    """
+    table = _read_csv(file)
+    columns = {}
     for name in table.columns:
-        answers = _as_answers(table[name])
-        if answers is not None:
-            found.append((str(name), answers))
-    if len(found) < 2 or not found[0][1]:
+        words = table[name].astype(str).str.strip().str.lower()
+        if len(table) > 0 and table[name].notna().all() and words.isin(ANSWER_WORDS).all():
+            columns[str(name)] = words.map(ANSWER_WORDS).tolist()
+    if len(columns) < 2:
         raise ValueError(
             "The CSV file needs two columns of 1 (correct) and 0 (wrong), one per "
             "model, with a value in every row."
         )
-    (name_a, a), (name_b, b) = found[:2]
-    return name_a, a, name_b, b
-
-
-def scores_from_csv(file):
-    """Read the first two number columns of a CSV file.
-
-    Returns (name_a, scores_a, name_b, scores_b). The column titles become the
-    model names. Empty cells are skipped, so the columns may differ in length.
-    """
-    table = pd.read_csv(file)
-    numeric = table.select_dtypes("number")
-    if numeric.shape[1] < 2:
-        raise ValueError("The CSV file needs two columns of numbers, one per model.")
-    name_a, name_b = numeric.columns[:2]
-    return (
-        str(name_a),
-        numeric[name_a].dropna().tolist(),
-        str(name_b),
-        numeric[name_b].dropna().tolist(),
-    )
+    return columns

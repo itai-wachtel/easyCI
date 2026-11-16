@@ -59,7 +59,7 @@ def _prepare(a, b, paired):
             raise ValueError(f"Model {name}: scores must be a simple list of numbers.")
         if len(scores) < 2:
             raise ValueError(f"Model {name}: at least 2 runs are needed.")
-        if np.isnan(scores).any():
+        if not np.isfinite(scores).all():  # catches missing values and infinity
             raise ValueError(f"Model {name}: some scores are missing or not numbers.")
     if paired and len(a) != len(b):
         raise ValueError(
