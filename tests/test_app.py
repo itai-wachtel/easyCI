@@ -148,6 +148,57 @@ def test_changing_a_setting_keeps_the_per_example_results():
     assert "99% confidence interval" in metrics(app)
 
 
+# --- Verdict, cautions, sentence and calculator ----------------------------
+
+
+def test_independent_example_is_likely_real():
+    app = open_app()
+    click(app, "Example: independent runs")
+    assert "Likely real: Model B is better than Model A" in app.success[0].value
+    assert "Model B outperforms Model A by 0.66 on average" in app.code[0].value
+    assert not any("Before you rely on this" in text.value for text in app.markdown)
+
+
+def test_shared_seeds_example_is_borderline_with_a_caution():
+    app = open_app()
+    click(app, "Example: shared seeds")
+    assert "Borderline" in app.warning[0].value
+    cautions = next(t.value for t in app.markdown if "Before you rely on this" in t.value)
+    assert "5 paired runs" in cautions and "at least 6 runs" in cautions
+    assert "is borderline" in app.code[0].value
+
+
+def test_per_example_example_shows_no_evidence():
+    app = open_app()
+    app.radio[0].set_value(EXAMPLES_MODE).run()
+    click(app, "Example: 1,000 test examples")
+    assert any("No evidence of a difference" in info.value for info in app.info)
+    assert "is not statistically significant" in app.code[0].value
+
+
+def test_calculator_starts_at_the_observed_difference():
+    app = open_app()
+    click(app, "Example: independent runs")
+    assert app.number_input[0].value == 0.66
+    assert metrics(app)["Runs needed"] == "5 per model"
+
+
+def test_calculator_asks_for_more_runs_for_a_smaller_difference():
+    app = open_app()
+    click(app, "Example: independent runs")
+    app.number_input[0].set_value(0.2).run()
+    assert not app.exception
+    assert metrics(app)["Runs needed"] == "47 per model"
+
+
+def test_calculator_with_zero_asks_for_a_difference():
+    app = open_app()
+    click(app, "Example: independent runs")
+    app.number_input[0].set_value(0.0).run()
+    assert any("above zero" in info.value for info in app.info)
+    assert "Runs needed" not in metrics(app)
+
+
 # --- Switching between the modes -------------------------------------------
 
 

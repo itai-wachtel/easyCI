@@ -44,7 +44,8 @@ class Comparison:
     ci_high: float
     confidence: float  # e.g. 0.95
     p_value: float
-    cohens_d: float
+    noise: float  # the run-to-run noise the difference is compared against
+    cohens_d: float  # difference divided by noise
     superiority: float  # how often B is the better model, from 0 to 1
     paired: bool
     higher_is_better: bool
@@ -154,18 +155,26 @@ def permutation_test(a, b, paired=False, seed=0):
     return (count + 1) / (N_RANDOM + 1)
 
 
+def run_noise(a, b, paired=False):
+    """The typical run-to-run noise that the difference is compared against.
+
+    Paired:   the spread of the per-seed differences.
+    Unpaired: the pooled standard deviation of the two models.
+    """
+    a, b = _prepare(a, b, paired)
+    if paired:
+        return float((b - a).std(ddof=1))
+    var_a, var_b = a.var(ddof=1), b.var(ddof=1)
+    n_a, n_b = len(a), len(b)
+    # Pooled standard deviation: the two spreads combined, weighted by size.
+    return float(np.sqrt(((n_a - 1) * var_a + (n_b - 1) * var_b) / (n_a + n_b - 2)))
+
+
 def cohens_d(a, b, paired=False):
     """Effect size: the difference measured in units of run-to-run noise."""
     a, b = _prepare(a, b, paired)
     difference = b.mean() - a.mean()
-
-    if paired:
-        noise = (b - a).std(ddof=1)  # spread of the per-seed differences
-    else:
-        var_a, var_b = a.var(ddof=1), b.var(ddof=1)
-        n_a, n_b = len(a), len(b)
-        # Pooled standard deviation: the two spreads combined, weighted by size.
-        noise = np.sqrt(((n_a - 1) * var_a + (n_b - 1) * var_b) / (n_a + n_b - 2))
+    noise = run_noise(a, b, paired)
 
     if noise == 0:  # no noise at all: the gap is either nothing or "infinite"
         return 0.0 if difference == 0 else float(np.sign(difference) * np.inf)
@@ -203,6 +212,7 @@ def compare(a, b, paired=False, higher_is_better=True, confidence=0.95):
         ci_high=ci_high,
         confidence=confidence,
         p_value=permutation_test(a, b, paired),
+        noise=run_noise(a, b, paired),
         cohens_d=cohens_d(a, b, paired),
         superiority=probability_of_superiority(a, b, paired, higher_is_better),
         paired=paired,

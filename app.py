@@ -19,7 +19,17 @@ import streamlit as st
 from parsing import answer_columns, parse_scores, score_columns
 from plots import accuracy_plot, difference_plot, runs_plot
 from stats.examples import compare_examples
+from stats.planning import runs_needed
 from stats.seeds import compare
+from stats.verdict import (
+    MULTIPLE_COMPARISONS_NOTE,
+    example_cautions,
+    example_sentence,
+    format_p,
+    judge,
+    seed_cautions,
+    seed_sentence,
+)
 
 SEEDS_MODE = "Several runs per model"
 EXAMPLES_MODE = "One run per model, results per test example"
@@ -110,9 +120,48 @@ def run_compare_examples(a, b, confidence):
     return compare_examples(a, b, confidence)
 
 
-def format_p(p):
-    """Show a p-value with three meaningful digits: 0.0317, 0.128."""
-    return "< 0.001" if p < 0.001 else f"{p:.3g}"
+def show_verdict(verdict, cautions):
+    """Draw the verdict as a coloured box, with any cautions listed under it."""
+    box = {"real": st.success, "borderline": st.warning, "none": st.info}[verdict.kind]
+    box(f"**{verdict.title}**\n\n{verdict.reason}")
+    if cautions:
+        st.markdown(
+            "**Before you rely on this:**\n" + "\n".join(f"- {caution}" for caution in cautions)
+        )
+
+
+def show_sentence(sentence):
+    """Draw the sentence for a paper in a box that has a copy button."""
+    st.subheader("Sentence for your paper")
+    st.code(sentence, language=None, wrap_lines=True)
+    st.caption(MULTIPLE_COMPARISONS_NOTE)
+
+
+def show_runs_calculator(result, digits):
+    """Draw the "how many runs do you need?" calculator of the per-seed mode."""
+    st.subheader("How many runs do you need?")
+    st.write(
+        "Enter the smallest difference you would care about. easyCI estimates how "
+        "many runs it takes to detect a true difference of that size."
+    )
+    target = st.number_input(
+        "Smallest difference worth detecting",
+        min_value=0.0,
+        value=round(abs(result.difference), digits),  # start at the observed one
+        step=10.0**-digits,
+        format=f"%.{digits}f",
+    )
+    needed = runs_needed(target, result.noise, result.paired, result.confidence)
+    if needed is None:
+        st.info("Enter a difference above zero.")
+        return
+    st.metric("Runs needed", f"{needed} paired runs" if result.paired else f"{needed} per model")
+    st.caption(
+        f"For an 80% chance of passing the {1 - result.confidence:.2f} bar, if the "
+        f"run-to-run noise stays at {result.noise:.{digits}f}. This is an "
+        f"approximation, and the noise is itself estimated from only "
+        f"{result.summary_a.n} runs, so treat the answer as a guide."
+    )
 
 
 def decimals_for(scores):
@@ -235,6 +284,9 @@ def seeds_screen():
         return
     digits = decimals_for(a + b)
 
+    verdict = judge(result, name_a, name_b, higher_is_better)
+    show_verdict(verdict, seed_cautions(result, name_a, name_b))
+
     if result.difference == 0:
         direction_text = f"{name_b} and {name_a} have the same average."
     else:
@@ -282,6 +334,8 @@ def seeds_screen():
         },
     )
 
+    show_sentence(seed_sentence(result, verdict, name_a, name_b, digits))
+
     st.subheader("The runs")
     st.caption(
         "One dot per run. Lines join the runs that shared a seed."
@@ -298,6 +352,8 @@ def seeds_screen():
     st.plotly_chart(
         difference_plot(result, name_a, name_b, is_dark(), decimals=digits), theme=None
     )
+
+    show_runs_calculator(result, digits)
 
 
 # ------------------------------ Mode 2: one run per model, per test example ---
@@ -339,6 +395,9 @@ def examples_screen():
         name_b = pick_b.selectbox("Column of the second model", titles, index=1)
     result = run_compare_examples(tuple(columns[name_a]), tuple(columns[name_b]), confidence)
     table = result.table
+
+    verdict = judge(result, name_a, name_b, more_of="test examples")
+    show_verdict(verdict, example_cautions(result))
 
     first, second, third = st.columns(3)
     with first:
@@ -391,6 +450,8 @@ def examples_screen():
         "methods: with one run per model, luck in the random seed is invisible. "
         f"To compare methods, train each one several times and use “{SEEDS_MODE}”."
     )
+
+    show_sentence(example_sentence(result, verdict, name_a, name_b))
 
     st.subheader("The accuracies")
     st.caption(f"Each bar is the {confidence:.0%} interval of one model's accuracy.")
