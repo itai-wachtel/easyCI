@@ -121,8 +121,22 @@ def test_fewer_and_noisier_runs_are_flagged():
     noisy = [78.0, 83.0, 80.5, 76.0, 82.0]
     cautions = seed_cautions(compare(steady, noisy), "A", "B")
     assert any("fewer runs is also much noisier" in caution for caution in cautions)
-    # The same noise with equal numbers of runs is not flagged.
-    assert seed_cautions(compare(steady[:5], noisy), "A", "B") == []
+
+
+def test_few_equal_runs_with_uneven_noise_are_flagged():
+    steady = [80.0, 80.1, 79.9, 80.2, 79.8, 80.0, 80.1, 79.9, 80.0, 80.1]
+    noisy = [78.0, 83.0, 80.5, 76.0, 82.0, 79.0, 84.0, 77.5, 81.0, 80.0]
+    (caution,) = seed_cautions(compare(steady[:5], noisy[:5]), "A", "B")
+    assert "fewer than 10 runs per model" in caution
+    # With 10 runs per model the problem is gone, so nothing is flagged.
+    assert seed_cautions(compare(steady, noisy), "A", "B") == []
+
+
+def test_uneven_noise_is_not_flagged_for_paired_runs():
+    steady = [80.0, 80.1, 79.9, 80.2, 79.8, 80.0]
+    noisy = [78.0, 83.0, 80.5, 76.0, 82.0, 79.0]
+    cautions = seed_cautions(compare(steady, noisy, paired=True), "A", "B")
+    assert not any("noisier" in caution for caution in cautions)
 
 
 def test_identical_scores_are_flagged():

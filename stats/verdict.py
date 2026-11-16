@@ -104,14 +104,27 @@ def seed_cautions(result, name_a, name_b):
             "With fewer than 5 runs per model, the noise is estimated from very "
             "little data, so expect a wide confidence interval."
         )
-    # The one case where the validation simulation found too many false
-    # alarms: the model with fewer runs is also much the noisier one.
+    # The two cases where the validation simulation found too many false
+    # alarms. Both need independent runs and one model much noisier than the
+    # other ("much" = more than twice the standard deviation).
     fewer, more = sorted((result.summary_a, result.summary_b), key=lambda s: s.n)
-    if fewer.n < more.n and fewer.std > 2 * more.std:
+    quiet, noisy = sorted((result.summary_a, result.summary_b), key=lambda s: s.std)
+    if result.paired:
+        pass  # paired runs are compared through their differences, so this does not apply
+    elif fewer.n < more.n and fewer.std > 2 * more.std:
+        # Case 1: the noisier model is also the one with fewer runs.
         cautions.append(
             "The model with fewer runs is also much noisier. In this situation the "
             "test raises false alarms more often than the bar suggests (about 8% "
             "instead of 5% in easyCI's validation). Equal numbers of runs avoid this."
+        )
+    elif n_a == n_b and n_a < 10 and noisy.std > 2 * quiet.std:
+        # Case 2: equal numbers of runs, but few of them.
+        cautions.append(
+            "One model is much noisier than the other and there are fewer than 10 "
+            "runs per model. In this situation the test raises false alarms slightly "
+            "more often than the bar suggests (about 7% instead of 5% with 5 runs in "
+            "easyCI's validation). With 10 or more runs per model this disappears."
         )
     for name, summary in ((name_a, result.summary_a), (name_b, result.summary_b)):
         if summary.std == 0:
