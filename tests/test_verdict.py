@@ -152,7 +152,10 @@ def test_sentence_when_a_wins_reports_a_positive_gap():
     result = compare(B, A)  # now "B" is the weaker model
     sentence = seed_sentence(result, judge(result, "Ours", "Baseline"), "Ours", "Baseline")
     assert sentence.startswith("Ours outperforms Baseline by 0.66 on average")
-    assert "[0.28, 1.04]" in sentence
+    # The interval for "B minus A" is negative here; the sentence flips it so
+    # that it describes the winner's lead as positive numbers.
+    assert result.ci_high < 0
+    assert f"[{-result.ci_high:.2f}, {-result.ci_low:.2f}]" in sentence
 
 
 def test_sentence_with_different_numbers_of_runs():

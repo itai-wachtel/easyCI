@@ -85,17 +85,18 @@ def bootstrap_ci(a, b, paired=False, confidence=0.95, n_resamples=10_000, seed=0
     """
     a, b = _prepare(a, b, paired)
     rng = np.random.default_rng(seed)  # fixed seed: same input, same answer
-    diffs = np.empty(n_resamples)
 
+    # All resamples are drawn in one step, as a table of positions: each row is
+    # one resample, and each entry says which run to pick (repeats allowed).
+    # values[picks] then looks up the scores, and .mean(axis=1) averages each row.
     if paired:
         d = b - a  # one difference per seed
-        for i in range(n_resamples):
-            diffs[i] = rng.choice(d, size=len(d), replace=True).mean()
+        picks = rng.integers(0, len(d), size=(n_resamples, len(d)))
+        diffs = d[picks].mean(axis=1)
     else:
-        for i in range(n_resamples):
-            new_a = rng.choice(a, size=len(a), replace=True)
-            new_b = rng.choice(b, size=len(b), replace=True)
-            diffs[i] = new_b.mean() - new_a.mean()
+        picks_a = rng.integers(0, len(a), size=(n_resamples, len(a)))
+        picks_b = rng.integers(0, len(b), size=(n_resamples, len(b)))
+        diffs = b[picks_b].mean(axis=1) - a[picks_a].mean(axis=1)
 
     tail = (1 - confidence) / 2 * 100  # 2.5 when confidence is 0.95
     low, high = np.percentile(diffs, [tail, 100 - tail])
@@ -112,45 +113,42 @@ def permutation_test(a, b, paired=False, seed=0):
     a, b = _prepare(a, b, paired)
     rng = np.random.default_rng(seed)
 
+    # Each branch below builds a table with one row per shuffle, computes the
+    # gap of every row in one step, and counts the rows at least as extreme
+    # as the real result.
+
     if paired:
         d = b - a
         observed = abs(d.mean())
         n_shuffles = 2 ** len(d)
-        if n_shuffles <= MAX_EXACT:
-            count = 0
-            for signs in product([1, -1], repeat=len(d)):
-                if abs((d * signs).mean()) >= observed - TOLERANCE:
-                    count += 1
-            return count / n_shuffles
-        count = 0
-        for _ in range(N_RANDOM):
-            signs = rng.choice([1, -1], size=len(d))
-            if abs((d * signs).mean()) >= observed - TOLERANCE:
-                count += 1
-        return (count + 1) / (N_RANDOM + 1)
+        exact = n_shuffles <= MAX_EXACT
+        if exact:
+            # Every way to put a plus or a minus in front of each difference.
+            signs = np.array(list(product([1, -1], repeat=len(d))))
+        else:
+            signs = rng.choice([1, -1], size=(N_RANDOM, len(d)))
+        gaps = np.abs((signs * d).mean(axis=1))
+    else:
+        pooled = np.concatenate([a, b])
+        n, n_b = len(pooled), len(b)
+        n_a = n - n_b
+        observed = abs(b.mean() - a.mean())
+        n_shuffles = comb(n, n_b)
+        exact = n_shuffles <= MAX_EXACT
+        if exact:
+            # Every way to choose which scores are called "B".
+            positions = np.array(list(combinations(range(n), n_b)))
+            sums_b = pooled[positions].sum(axis=1)
+        else:
+            # Shuffle the pooled scores N_RANDOM times; the first n_b are "B".
+            shuffled = rng.permuted(np.tile(pooled, (N_RANDOM, 1)), axis=1)
+            sums_b = shuffled[:, :n_b].sum(axis=1)
+        # Difference of means when the "B" group adds up to sums_b.
+        gaps = np.abs(sums_b / n_b - (pooled.sum() - sums_b) / n_a)
 
-    pooled = np.concatenate([a, b])
-    total = pooled.sum()
-    n, n_b = len(pooled), len(b)
-    n_a = n - n_b
-    observed = abs(b.mean() - a.mean())
-
-    def gap(sum_b):
-        """Difference of means when the 'B' group adds up to sum_b."""
-        return abs(sum_b / n_b - (total - sum_b) / n_a)
-
-    n_shuffles = comb(n, n_b)
-    if n_shuffles <= MAX_EXACT:
-        count = 0
-        for positions in combinations(range(n), n_b):
-            if gap(pooled[list(positions)].sum()) >= observed - TOLERANCE:
-                count += 1
+    count = int((gaps >= observed - TOLERANCE).sum())
+    if exact:
         return count / n_shuffles
-    count = 0
-    for _ in range(N_RANDOM):
-        shuffled = rng.permutation(pooled)
-        if gap(shuffled[:n_b].sum()) >= observed - TOLERANCE:
-            count += 1
     # The +1 counts the real data as one of the shuffles, so p is never 0.
     return (count + 1) / (N_RANDOM + 1)
 
