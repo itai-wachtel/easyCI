@@ -101,8 +101,17 @@ def seed_cautions(result, name_a, name_b):
         )
     if min(n_a, n_b) < 5:
         cautions.append(
-            "With fewer than 5 runs per model, the confidence interval is rough "
-            "and tends to be too narrow."
+            "With fewer than 5 runs per model, the noise is estimated from very "
+            "little data, so expect a wide confidence interval."
+        )
+    # The one case where the validation simulation found too many false
+    # alarms: the model with fewer runs is also much the noisier one.
+    fewer, more = sorted((result.summary_a, result.summary_b), key=lambda s: s.n)
+    if fewer.n < more.n and fewer.std > 2 * more.std:
+        cautions.append(
+            "The model with fewer runs is also much noisier. In this situation the "
+            "test raises false alarms more often than the bar suggests (about 8% "
+            "instead of 5% in easyCI's validation). Equal numbers of runs avoid this."
         )
     for name, summary in ((name_a, result.summary_a), (name_b, result.summary_b)):
         if summary.std == 0:
@@ -147,9 +156,9 @@ def seed_sentence(result, verdict, name_a, name_b, decimals=2):
     if result.paired:
         test, runs = "two-sided paired permutation test", f"n = {n_a} paired runs"
     elif n_a == n_b:
-        test, runs = "two-sided permutation test", f"n = {n_a} runs per model"
+        test, runs = "two-sided studentized permutation test", f"n = {n_a} runs per model"
     else:
-        test, runs = "two-sided permutation test", f"n = {n_a} and {n_b} runs"
+        test, runs = "two-sided studentized permutation test", f"n = {n_a} and {n_b} runs"
     p = format_p(result.p_value)
     p = f"p {p}" if p.startswith("<") else f"p = {p}"
 
@@ -158,7 +167,7 @@ def seed_sentence(result, verdict, name_a, name_b, decimals=2):
             result, name_a, name_b, result.higher_is_better
         )
         details = (
-            f"({percent}% bootstrap CI [{low:.{decimals}f}, {high:.{decimals}f}]; "
+            f"({percent}% CI [{low:.{decimals}f}, {high:.{decimals}f}]; "
             f"{test}, {p}; {runs})"
         )
         return (
@@ -167,7 +176,7 @@ def seed_sentence(result, verdict, name_a, name_b, decimals=2):
         )
 
     details = (
-        f"({percent}% bootstrap CI [{result.ci_low:.{decimals}f}, "
+        f"({percent}% CI [{result.ci_low:.{decimals}f}, "
         f"{result.ci_high:.{decimals}f}]; {test}, {p}; {runs})"
     )
     status = "borderline" if verdict.kind == "borderline" else "not statistically significant"

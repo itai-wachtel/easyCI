@@ -49,7 +49,7 @@ def test_independent_example_shows_the_known_results():
     click(app, "Example: independent runs")
     shown = metrics(app)
     assert shown["Difference (Model B − Model A)"] == "+0.66"
-    assert shown["95% confidence interval"] == "0.28 to 1.04"
+    assert shown["95% confidence interval"] == "0.14 to 1.18"
     assert shown["p-value"] == "0.0317"
     assert shown["Effect size (Cohen's d)"] == "1.91"
     assert shown["Model B is better"] == "92%"
@@ -100,7 +100,7 @@ def test_scores_between_0_and_1_are_not_rounded_away():
     app.text_area[1].set_value("0.842, 0.838, 0.845, 0.841, 0.844").run()
     shown = metrics(app)
     assert shown["Difference (Model B − Model A)"] == "+0.0066"
-    assert shown["95% confidence interval"] == "0.0028 to 0.0104"
+    assert shown["95% confidence interval"] == "0.0014 to 0.0118"
 
 
 def test_lower_is_better_flips_who_wins():

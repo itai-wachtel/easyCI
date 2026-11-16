@@ -116,6 +116,15 @@ def test_three_independent_runs_get_two_cautions():
     assert "fewer than 5 runs" in cautions[1]
 
 
+def test_fewer_and_noisier_runs_are_flagged():
+    steady = [80.0, 80.1, 79.9, 80.2, 79.8, 80.0, 80.1, 79.9, 80.0, 80.1]
+    noisy = [78.0, 83.0, 80.5, 76.0, 82.0]
+    cautions = seed_cautions(compare(steady, noisy), "A", "B")
+    assert any("fewer runs is also much noisier" in caution for caution in cautions)
+    # The same noise with equal numbers of runs is not flagged.
+    assert seed_cautions(compare(steady[:5], noisy), "A", "B") == []
+
+
 def test_identical_scores_are_flagged():
     cautions = seed_cautions(compare([83.0] * 5, B), "Baseline", "Ours")
     assert any("All runs of Baseline" in caution for caution in cautions)
@@ -134,8 +143,8 @@ def test_small_test_set_and_few_disagreements_are_flagged():
 def test_sentence_for_a_real_difference():
     sentence = seed_sentence(INDEPENDENT, judge(INDEPENDENT, "A", "B"), "A", "B")
     assert sentence == (
-        "B outperforms A by 0.66 on average (95% bootstrap CI [0.28, 1.04]; "
-        "two-sided permutation test, p = 0.0317; n = 5 runs per model)."
+        "B outperforms A by 0.66 on average (95% CI [0.14, 1.18]; two-sided "
+        "studentized permutation test, p = 0.0317; n = 5 runs per model)."
     )
 
 
@@ -143,7 +152,7 @@ def test_sentence_for_a_borderline_paired_difference():
     verdict = judge(SHARED_SEEDS, "A", "B")
     assert seed_sentence(SHARED_SEEDS, verdict, "A", "B") == (
         "The difference between B and A (+0.60 on average) is borderline "
-        "(95% bootstrap CI [0.48, 0.72]; two-sided paired permutation test, "
+        "(95% CI [0.40, 0.80]; two-sided paired permutation test, "
         "p = 0.0625; n = 5 paired runs)."
     )
 

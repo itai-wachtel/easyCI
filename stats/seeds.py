@@ -13,6 +13,7 @@ from itertools import combinations, product
 from math import comb
 
 import numpy as np
+from scipy import stats as scipy_stats
 
 # The permutation test tries every possible shuffle when there are at most
 # this many. Above it, it tries N_RANDOM random shuffles instead.
@@ -77,11 +78,53 @@ def summarize(scores):
     return Summary(mean=float(scores.mean()), std=float(scores.std(ddof=1)), n=len(scores))
 
 
+def t_interval(a, b, paired=False, confidence=0.95):
+    """Confidence interval for the difference (B minus A). This is the one easyCI shows.
+
+        difference  plus or minus  multiplier x standard error
+
+    The standard error is how much the difference would wobble if the whole
+    experiment were repeated. The multiplier comes from the t-distribution:
+    it is 1.96 with many runs and grows when runs are few (2.78 for 5 paired
+    runs), which makes up for the noise itself being estimated from few runs.
+
+    Unpaired runs use Welch's version, which lets the two models have
+    different amounts of noise.
+    """
+    a, b = _prepare(a, b, paired)
+    if paired:
+        d = b - a
+        difference = d.mean()
+        standard_error = d.std(ddof=1) / np.sqrt(len(d))
+        freedom = len(d) - 1
+    else:
+        difference = b.mean() - a.mean()
+        part_a = a.var(ddof=1) / len(a)  # A's share of the wobble
+        part_b = b.var(ddof=1) / len(b)  # B's share
+        standard_error = np.sqrt(part_a + part_b)
+        if standard_error > 0:
+            # Welch's formula for the "degrees of freedom": roughly, how many
+            # runs' worth of information the noise estimate is based on.
+            freedom = (part_a + part_b) ** 2 / (
+                part_a**2 / (len(a) - 1) + part_b**2 / (len(b) - 1)
+            )
+
+    if standard_error == 0:  # no noise at all: the interval is a single point
+        return float(difference), float(difference)
+    multiplier = scipy_stats.t.ppf(1 - (1 - confidence) / 2, freedom)
+    margin = multiplier * standard_error
+    return float(difference - margin), float(difference + margin)
+
+
 def bootstrap_ci(a, b, paired=False, confidence=0.95, n_resamples=10_000, seed=0):
-    """Confidence interval for the difference (B minus A).
+    """An earlier confidence interval, kept for comparison. easyCI shows t_interval.
 
     Resample the runs many times, compute the difference each time, and keep
     the middle part (95% by default) of all those differences.
+
+    The validation simulation showed that with few runs this interval is too
+    narrow: labelled 95%, it contained the truth only 81% to 93% of the time.
+    The simulation still measures it next to t_interval.
     """
     a, b = _prepare(a, b, paired)
     rng = np.random.default_rng(seed)  # fixed seed: same input, same answer
@@ -103,12 +146,23 @@ def bootstrap_ci(a, b, paired=False, confidence=0.95, n_resamples=10_000, seed=0
     return float(low), float(high)
 
 
-def permutation_test(a, b, paired=False, seed=0):
+def permutation_test(a, b, paired=False, seed=0, studentized=True):
     """p-value: how often a gap this big appears if the models are identical.
 
     Unpaired: pool all scores and re-split them into two groups.
     Paired:   flip the sign of each per-seed difference.
     Counts the shuffles whose gap is at least as far from zero as the real one.
+
+    studentized=True (unpaired only) measures each gap as "difference divided
+    by its standard error" instead of the raw difference. A shuffle that
+    happens to put the noisy scores in the small group then gets a large
+    standard error, so its gap counts for less. Without this, the test raises
+    too many false alarms when one model is noisier and has fewer runs (17%
+    instead of 5% in the validation simulation). studentized=False is the
+    earlier version, kept so the simulation can compare the two.
+
+    For paired runs the two versions always give the same p-value, so the
+    simpler one is used.
     """
     a, b = _prepare(a, b, paired)
     rng = np.random.default_rng(seed)
@@ -130,23 +184,52 @@ def permutation_test(a, b, paired=False, seed=0):
         gaps = np.abs((signs * d).mean(axis=1))
     else:
         pooled = np.concatenate([a, b])
+        # Subtracting the overall mean changes no gap, and keeps the sums of
+        # squares below small and accurate.
+        pooled = pooled - pooled.mean()
         n, n_b = len(pooled), len(b)
         n_a = n - n_b
-        observed = abs(b.mean() - a.mean())
+        spread = pooled.std()
+
+        def gap(group_b):
+            """The gap for each row of group_b (a table: one shuffle per row)."""
+            sum_b = group_b.sum(axis=1)
+            squares_b = (group_b**2).sum(axis=1)
+            mean_b = sum_b / n_b
+            mean_a = (pooled.sum() - sum_b) / n_a
+            difference = np.abs(mean_b - mean_a)
+            if not studentized:
+                return difference
+            # Variance of each group, from its sum and its sum of squares.
+            var_b = (squares_b - n_b * mean_b**2) / (n_b - 1)
+            var_a = ((pooled**2).sum() - squares_b - n_a * mean_a**2) / (n_a - 1)
+            standard_error = np.sqrt(np.clip(var_a / n_a + var_b / n_b, 0, None))
+            # A shuffle whose two groups have no noise at all cannot be
+            # divided by its standard error: its gap is "infinitely clear"
+            # if the groups differ, and zero if they do not.
+            no_noise = standard_error <= 1e-9 * spread
+            return np.where(
+                no_noise,
+                np.where(difference > 1e-9 * spread, np.inf, 0.0),
+                difference / np.where(no_noise, 1.0, standard_error),
+            )
+
+        observed = gap(pooled[None, n_a:])[0]  # the real B scores are the last n_b
         n_shuffles = comb(n, n_b)
         exact = n_shuffles <= MAX_EXACT
         if exact:
             # Every way to choose which scores are called "B".
             positions = np.array(list(combinations(range(n), n_b)))
-            sums_b = pooled[positions].sum(axis=1)
+            gaps = gap(pooled[positions])
         else:
             # Shuffle the pooled scores N_RANDOM times; the first n_b are "B".
             shuffled = rng.permuted(np.tile(pooled, (N_RANDOM, 1)), axis=1)
-            sums_b = shuffled[:, :n_b].sum(axis=1)
-        # Difference of means when the "B" group adds up to sums_b.
-        gaps = np.abs(sums_b / n_b - (pooled.sum() - sums_b) / n_a)
+            gaps = gap(shuffled[:, :n_b])
 
-    count = int((gaps >= observed - TOLERANCE).sum())
+    if np.isinf(observed):
+        count = int(np.isinf(gaps).sum())
+    else:
+        count = int((gaps >= observed - TOLERANCE * max(1.0, observed)).sum())
     if exact:
         return count / n_shuffles
     # The +1 counts the real data as one of the shuffles, so p is never 0.
@@ -201,7 +284,7 @@ def probability_of_superiority(a, b, paired=False, higher_is_better=True):
 def compare(a, b, paired=False, higher_is_better=True, confidence=0.95):
     """Run every analysis and return the results in one bundle."""
     a, b = _prepare(a, b, paired)
-    ci_low, ci_high = bootstrap_ci(a, b, paired, confidence)
+    ci_low, ci_high = t_interval(a, b, paired, confidence)
     return Comparison(
         summary_a=summarize(a),
         summary_b=summarize(b),

@@ -6,6 +6,7 @@ from scipy import stats as scipy_stats
 
 from stats.seeds import (
     bootstrap_ci,
+    t_interval,
     cohens_d,
     compare,
     permutation_test,
@@ -69,11 +70,93 @@ def mean_difference(x, y):
     return np.mean(y) - np.mean(x)
 
 
-def test_unpaired_p_value_matches_scipy():
-    referee = scipy_stats.permutation_test(
-        (A, B), mean_difference, permutation_type="independent", n_resamples=np.inf
+# Two models with different amounts of noise and different numbers of runs:
+# the case where the plain and the studentized test disagree.
+UNEVEN_A = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+UNEVEN_B = [-12.0, 30.0, 9.0, 21.0]
+
+
+def welch_t(x, y):
+    """The difference divided by its standard error, as scipy computes it."""
+    return scipy_stats.ttest_ind(y, x, equal_var=False).statistic
+
+
+# easyCI counts the shuffles whose gap is at least as far from zero as the
+# real one. scipy is asked for exactly that count: "how often is the size of
+# the gap greater or equal". (scipy's own two-sided default doubles the
+# smaller tail instead, which differs when the groups have different sizes.)
+
+
+def test_plain_p_value_matches_scipy():
+    for a, b in [(A, B), (UNEVEN_A, UNEVEN_B)]:
+        referee = scipy_stats.permutation_test(
+            (a, b), lambda x, y: abs(mean_difference(x, y)), alternative="greater",
+            permutation_type="independent", n_resamples=np.inf,
+        )
+        assert permutation_test(a, b, studentized=False) == pytest.approx(referee.pvalue)
+
+
+def test_studentized_p_value_matches_scipy():
+    for a, b in [(A, B), (UNEVEN_A, UNEVEN_B)]:
+        referee = scipy_stats.permutation_test(
+            (a, b), lambda x, y: abs(welch_t(x, y)), alternative="greater",
+            permutation_type="independent", n_resamples=np.inf,
+        )
+        assert permutation_test(a, b) == pytest.approx(referee.pvalue)
+
+
+def test_studentized_and_plain_tests_differ_when_noise_is_uneven():
+    assert permutation_test(UNEVEN_A, UNEVEN_B) != permutation_test(
+        UNEVEN_A, UNEVEN_B, studentized=False
     )
-    assert permutation_test(A, B) == pytest.approx(referee.pvalue)
+
+
+def test_studentized_test_handles_groups_with_no_noise():
+    # 3 and 3 runs: the clearest result gives the floor, 2 of 20 shuffles.
+    assert permutation_test([1, 1, 1], [2, 2, 2]) == pytest.approx(2 / 20)
+    assert permutation_test([1, 1, 1], [1, 1, 1]) == 1
+
+
+def test_t_interval_matches_scipy_for_independent_runs():
+    for a, b in [(A, B), (UNEVEN_A, UNEVEN_B)]:
+        referee = scipy_stats.ttest_ind(b, a, equal_var=False).confidence_interval(0.95)
+        assert t_interval(a, b) == pytest.approx((referee.low, referee.high))
+
+
+def test_t_interval_matches_scipy_for_paired_runs():
+    referee = scipy_stats.ttest_rel(PAIRED_B, PAIRED_A).confidence_interval(0.95)
+    assert t_interval(PAIRED_A, PAIRED_B, paired=True) == pytest.approx(
+        (referee.low, referee.high)
+    )
+
+
+def test_t_interval_on_the_two_examples():
+    assert t_interval(A, B) == pytest.approx((0.14, 1.18), abs=0.005)
+    assert t_interval(PAIRED_A, PAIRED_B, paired=True) == pytest.approx((0.40, 0.80), abs=0.005)
+
+
+def test_t_interval_is_wider_than_the_bootstrap_with_few_runs():
+    # The bootstrap interval is too narrow with 5 runs; the t-interval corrects that.
+    for a, b, paired in [(A, B, False), (PAIRED_A, PAIRED_B, True)]:
+        t_low, t_high = t_interval(a, b, paired)
+        boot_low, boot_high = bootstrap_ci(a, b, paired)
+        assert t_low < boot_low and boot_high < t_high
+
+
+def test_t_interval_is_centred_on_the_difference():
+    low, high = t_interval(A, B)
+    assert (low + high) / 2 == pytest.approx(0.66)
+
+
+def test_t_interval_widens_with_the_confidence_level():
+    low_90, high_90 = t_interval(A, B, confidence=0.90)
+    low_99, high_99 = t_interval(A, B, confidence=0.99)
+    assert low_99 < low_90 and high_90 < high_99
+
+
+def test_t_interval_without_any_noise_is_a_single_point():
+    assert t_interval([1, 1, 1], [2, 2, 2]) == (1.0, 1.0)
+    assert t_interval([1, 2, 3], [2, 3, 4], paired=True) == (1.0, 1.0)
 
 
 def test_paired_p_value_matches_scipy():
