@@ -108,10 +108,68 @@ def runs_plot(a, b, name_a, name_b, paired, dark=False):
     return _style(fig, colours, height=380)
 
 
-def difference_plot(result, name_a, name_b, dark=False):
+def accuracy_plot(result, name_a, name_b, dark=False):
+    """Each model's accuracy as a dot, with its Wilson interval as a vertical bar."""
+    colours = COLOURS["dark" if dark else "light"]
+    percent = round(result.confidence * 100)
+    fig = go.Figure()
+
+    models = [
+        (result.accuracy_a, result.interval_a, name_a, "a"),
+        (result.accuracy_b, result.interval_b, name_b, "b"),
+    ]
+    for position, (accuracy, (low, high), name, key) in enumerate(models):
+        fig.add_trace(
+            go.Scatter(
+                x=[position, position],
+                y=[low, high],
+                mode="lines",
+                line=dict(color=colours[key], width=3),
+                hovertemplate=(
+                    f"{name}, {percent}% interval: {low:.1f}% to {high:.1f}%<extra></extra>"
+                ),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=[position],
+                y=[accuracy],
+                mode="markers",
+                marker=dict(
+                    color=colours[key], size=13, line=dict(color=colours["surface"], width=2)
+                ),
+                hovertemplate=f"{name}: {accuracy:.1f}%<extra></extra>",
+            )
+        )
+        fig.add_annotation(
+            x=position + 0.08,
+            y=accuracy,
+            text=f"{accuracy:.1f}%",
+            showarrow=False,
+            xanchor="left",
+            font=dict(color=colours["ink"], size=13),
+        )
+
+    fig.update_xaxes(
+        tickvals=[0, 1],
+        ticktext=[name_a, name_b],
+        range=[-0.8, 1.8],
+        showgrid=False,
+        tickfont=dict(size=14),
+    )
+    # Leave some room above and below the two bars.
+    lowest = min(result.interval_a[0], result.interval_b[0])
+    highest = max(result.interval_a[1], result.interval_b[1])
+    room = (highest - lowest) * 0.1 or 1
+    fig.update_yaxes(title_text="Accuracy (%)", range=[lowest - room, highest + room])
+    return _style(fig, colours, height=340)
+
+
+def difference_plot(result, name_a, name_b, dark=False, unit=""):
     """The confidence interval of the difference as a bar, with a line at zero.
 
     If the bar does not touch the zero line, "no difference" is not plausible.
+    `unit` is added to the axis title, for example " (percentage points)".
     """
     colours = COLOURS["dark" if dark else "light"]
     percent = round(result.confidence * 100)
@@ -148,7 +206,9 @@ def difference_plot(result, name_a, name_b, dark=False):
     left = min(result.ci_low, 0)
     right = max(result.ci_high, 0)
     room = (right - left) * 0.15 or 1
-    fig.update_xaxes(title_text=f"{name_b} minus {name_a}", range=[left - room, right + room])
+    fig.update_xaxes(
+        title_text=f"{name_b} minus {name_a}{unit}", range=[left - room, right + room]
+    )
     fig.update_yaxes(visible=False, range=[-1, 1])
     fig = _style(fig, colours, height=200)
     fig.update_layout(margin=dict(t=30))

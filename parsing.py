@@ -21,6 +21,42 @@ def parse_scores(text):
     return scores
 
 
+# The ways a CSV file may write "correct" and "wrong".
+ANSWER_WORDS = {
+    "1": True, "1.0": True, "true": True, "yes": True,
+    "0": False, "0.0": False, "false": False, "no": False,
+}
+
+
+def _as_answers(column):
+    """Return a CSV column as a list of True/False, or None if it is not one."""
+    words = column.astype(str).str.strip().str.lower()
+    if column.isna().any() or not words.isin(ANSWER_WORDS).all():
+        return None
+    return words.map(ANSWER_WORDS).tolist()
+
+
+def answers_from_csv(file):
+    """Read the first two right/wrong columns of a CSV file.
+
+    Each row is one test example; each column holds 1 (correct) or 0 (wrong)
+    for one model. Returns (name_a, answers_a, name_b, answers_b).
+    """
+    table = pd.read_csv(file)
+    found = []
+    for name in table.columns:
+        answers = _as_answers(table[name])
+        if answers is not None:
+            found.append((str(name), answers))
+    if len(found) < 2 or not found[0][1]:
+        raise ValueError(
+            "The CSV file needs two columns of 1 (correct) and 0 (wrong), one per "
+            "model, with a value in every row."
+        )
+    (name_a, a), (name_b, b) = found[:2]
+    return name_a, a, name_b, b
+
+
 def scores_from_csv(file):
     """Read the first two number columns of a CSV file.
 
