@@ -7,6 +7,9 @@ results of two models, and it tells you how much of the difference between
 them you can trust: a confidence interval, a p-value, a plain-language verdict,
 and a sentence you can paste into a paper.
 
+**Try it online: [easyci-itaiwachtel.streamlit.app](https://easyci-itaiwachtel.streamlit.app)**
+(no installation; the built-in examples show every feature).
+
 ![The results screen of easyCI](docs/screenshot.jpg)
 
 ## The problem
@@ -154,7 +157,8 @@ rate with its own margin of error.
 
 ## Run it yourself
 
-You need Python 3.12 or newer.
+The quickest way is the [online version](https://easyci-itaiwachtel.streamlit.app).
+To run it on your own computer, you need Python 3.12 or newer.
 
 ```bash
 python -m venv .venv
