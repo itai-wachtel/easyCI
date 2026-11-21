@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from parsing import answer_columns, parse_scores, score_columns
+from parsing import (
+    answer_columns,
+    default_columns,
+    looks_like_index,
+    parse_scores,
+    score_columns,
+)
 
 # --- Pasted text -------------------------------------------------------------
 
@@ -76,6 +82,44 @@ def test_score_csv_with_one_column_is_rejected():
         score_columns(io.StringIO("baseline\n83.1\n83.9\n"))
 
 
+# --- Which two columns to start with -----------------------------------------
+
+
+@pytest.mark.parametrize("title", ["seed", "Seed", "run_id", "Run", "ID", "Unnamed: 0", "epoch"])
+def test_titles_that_number_the_runs(title):
+    assert looks_like_index(title, [42.0, 7.0, 123.0])
+
+
+@pytest.mark.parametrize("values", [[1, 2, 3, 4], [0.0, 1.0, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0]])
+def test_values_that_count_up_by_one(values):
+    assert looks_like_index("x", values)
+
+
+@pytest.mark.parametrize(
+    "title, values",
+    [
+        ("baseline", [83.1, 83.9, 83.5]),
+        ("ours", [80.0, 81.0, 82.0]),  # counts up by one, but not from 0 or 1
+        ("ours", [1.0, 2.0]),  # too short to tell
+        ("loss", [1.0, float("nan"), 3.0]),
+        ("runtime", [1.0, 2.0, 3.0, 5.0]),  # "runtime" is not "run"
+    ],
+)
+def test_score_columns_are_not_mistaken_for_numbering(title, values):
+    assert not looks_like_index(title, values)
+
+
+def test_default_columns_skip_the_seed():
+    columns = {"seed": [1, 2, 3], "baseline": [83.1, 83.9, 83.5], "ours": [84.2, 83.8, 84.5]}
+    assert default_columns(columns) == ("baseline", "ours")
+
+
+def test_default_columns_fall_back_to_the_first_two():
+    # Only one column looks like scores, so there is nothing better to offer.
+    columns = {"seed": [1, 2, 3], "ours": [84.2, 83.8, 84.5]}
+    assert default_columns(columns) == ("seed", "ours")
+
+
 # --- CSV files of right/wrong answers ----------------------------------------
 
 
@@ -116,6 +160,8 @@ def test_per_seed_sample_file():
     columns = score_columns(SAMPLES / "per_seed.csv")
     assert list(columns) == ["seed", "Baseline", "New model"]
     assert len(columns["Baseline"]) == len(columns["New model"]) == 6
+    # The page must start with the two models, not with the seed column.
+    assert default_columns(columns) == ("Baseline", "New model")
 
 
 def test_per_example_sample_file():

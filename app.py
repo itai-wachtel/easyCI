@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from parsing import answer_columns, parse_scores, score_columns
+from parsing import answer_columns, default_columns, parse_scores, score_columns
 from plots import accuracy_plot, difference_plot, runs_plot
 from stats.examples import compare_examples
 from stats.planning import runs_needed
@@ -76,7 +76,7 @@ def load_scores_csv(new_file=False):
     name_a = st.session_state.get("csv_column_a")
     name_b = st.session_state.get("csv_column_b")
     if new_file or name_a not in columns or name_b not in columns:
-        name_a, name_b = titles[0], titles[1]
+        name_a, name_b = default_columns(columns)  # skips columns such as "seed"
     st.session_state.csv_column_a = name_a
     st.session_state.csv_column_b = name_b
     st.session_state.name_a = name_a
@@ -237,7 +237,8 @@ def seeds_screen():
         "Write decimals with a point: 83.1, not 83,1."
     )
 
-    with st.expander("Or upload a CSV file"):
+    # Stay open while a file is loaded, so the columns that were picked show.
+    with st.expander("Or upload a CSV file", expanded=st.session_state.get("csv_file") is not None):
         file = st.file_uploader(
             "A file with one column of scores per model. The column titles become the names.",
             type="csv",

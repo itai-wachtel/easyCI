@@ -58,6 +58,39 @@ def score_columns(file):
     return columns
 
 
+# Column titles that number the runs instead of scoring them. Titles are
+# compared in lower case with everything but letters removed, so "Seed",
+# "run_id" and "Unnamed: 0" (pandas' saved index) are all caught.
+INDEX_TITLES = {
+    "seed", "seeds", "run", "runs", "runid", "id", "index", "idx",
+    "step", "steps", "epoch", "epochs", "trial", "repeat", "unnamed",
+}
+
+
+def looks_like_index(title, values):
+    """True if a column numbers the runs (seed, run, 1, 2, 3, ...) rather than scores them."""
+    if re.sub(r"[^a-z]", "", str(title).lower()) in INDEX_TITLES:
+        return True
+    # Values counting up by one from 0 or 1: 1, 2, 3, ... or 0, 1, 2, ...
+    first = values[0] if values else None
+    return first in (0, 1) and len(values) > 2 and values == list(
+        range(int(first), int(first) + len(values))
+    )
+
+
+def default_columns(columns):
+    """The two columns to start with: the first two that look like scores.
+
+    `columns` is what score_columns returned. Columns such as "seed" are
+    skipped; if fewer than two columns are left, the first two are used.
+    """
+    titles = list(columns)
+    scores = [title for title in titles if not looks_like_index(title, columns[title])]
+    if len(scores) >= 2:
+        return scores[0], scores[1]
+    return titles[0], titles[1]
+
+
 def answer_columns(file):
     """Read every right/wrong column in a CSV file.
 
