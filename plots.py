@@ -1,4 +1,9 @@
-"""The two charts of the per-seed screen. Each function returns a Plotly figure."""
+"""The charts of easyCI. Each function returns a Plotly figure.
+
+    runs_plot        per-seed mode: every run as a dot
+    accuracy_plot    per-example mode: each model's accuracy with its interval
+    difference_plot  both modes: the confidence interval of the difference
+"""
 
 import plotly.graph_objects as go
 
@@ -175,12 +180,14 @@ def difference_plot(result, name_a, name_b, dark=False, unit="", decimals=2):
     percent = round(result.confidence * 100)
     fig = go.Figure()
 
+    # The difference belongs to neither model, so it is drawn in the text
+    # colour rather than in model A's blue or model B's orange.
     fig.add_trace(
         go.Scatter(
             x=[result.ci_low, result.ci_high],
             y=[0, 0],
             mode="lines",
-            line=dict(color=colours["a"], width=4),
+            line=dict(color=colours["ink"], width=4),
             hovertemplate=(
                 f"{percent}% confidence interval: "
                 f"{result.ci_low:.{decimals}f} to {result.ci_high:.{decimals}f}<extra></extra>"
@@ -192,7 +199,7 @@ def difference_plot(result, name_a, name_b, dark=False, unit="", decimals=2):
             x=[result.difference],
             y=[0],
             mode="markers",
-            marker=dict(color=colours["a"], size=13, line=dict(color=colours["surface"], width=2)),
+            marker=dict(color=colours["ink"], size=13, line=dict(color=colours["surface"], width=2)),
             hovertemplate=(
                 f"Observed difference: {result.difference:.{decimals}f}<extra></extra>"
             ),

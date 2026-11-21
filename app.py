@@ -189,8 +189,11 @@ def format_d(d):
 
 
 def confidence_box(key):
+    # The default goes through session_state only, like the name boxes: giving
+    # the box a default as well (index=1) makes Streamlit warn about two sources.
+    st.session_state.setdefault(key, 0.95)
     return st.selectbox(
-        "Confidence level", [0.90, 0.95, 0.99], index=1, format_func=lambda c: f"{c:.0%}", key=key
+        "Confidence level", [0.90, 0.95, 0.99], format_func=lambda c: f"{c:.0%}", key=key
     )
 
 
