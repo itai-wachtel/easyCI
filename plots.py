@@ -8,24 +8,25 @@
 import plotly.graph_objects as go
 
 # Colours for light and dark mode. Model A is always blue, model B always orange.
+# "surface", "ink" and the greys match the page theme in .streamlit/config.toml.
 COLOURS = {
     "light": {
-        "a": "#2a78d6",
-        "b": "#eb6834",
-        "surface": "#ffffff",
-        "ink": "#0b0b0b",
-        "muted": "#898781",
-        "grid": "#e1e0d9",
-        "axis": "#c3c2b7",
+        "a": "#3b6fe0",
+        "b": "#e8743b",
+        "surface": "#f7f8fc",
+        "ink": "#1a1d3a",
+        "muted": "#8a8fa8",
+        "grid": "#e4e6f0",
+        "axis": "#cfd3e2",
     },
     "dark": {
-        "a": "#3987e5",
-        "b": "#d95926",
-        "surface": "#0e1117",
-        "ink": "#f0efec",
-        "muted": "#898781",
-        "grid": "#2c2c2a",
-        "axis": "#383835",
+        "a": "#6f95f7",
+        "b": "#f08a52",
+        "surface": "#0c0f1e",
+        "ink": "#e6e8f4",
+        "muted": "#7f86a6",
+        "grid": "#1e2338",
+        "axis": "#2c3250",
     },
 }
 
@@ -37,7 +38,7 @@ def _style(fig, colours, height):
         margin=dict(l=70, r=20, t=20, b=60),  # room for the axis labels
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=colours["ink"]),
+        font=dict(color=colours["ink"], family="Inter, sans-serif"),  # the page's font
         showlegend=False,
     )
     fig.update_xaxes(gridcolor=colours["grid"], linecolor=colours["axis"], zeroline=False)

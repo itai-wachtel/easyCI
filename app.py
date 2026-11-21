@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import style
 from parsing import answer_columns, default_columns, parse_scores, score_columns
 from plots import accuracy_plot, difference_plot, runs_plot
 from stats.examples import compare_examples
@@ -121,13 +122,8 @@ def run_compare_examples(a, b, confidence):
 
 
 def show_verdict(verdict, cautions):
-    """Draw the verdict as a coloured box, with any cautions listed under it."""
-    box = {"real": st.success, "borderline": st.warning, "none": st.info}[verdict.kind]
-    box(f"**{verdict.title}**\n\n{verdict.reason}")
-    if cautions:
-        st.markdown(
-            "**Before you rely on this:**\n" + "\n".join(f"- {caution}" for caution in cautions)
-        )
+    """Draw the verdict as a coloured card, with any cautions listed inside it."""
+    style.verdict_card(verdict, cautions)
 
 
 def show_sentence(sentence):
@@ -205,7 +201,7 @@ def is_dark():
 
 
 def seeds_screen():
-    st.header("Scores", divider="gray")
+    style.section(1, "Scores", "Paste one score per training run, or start from an example.")
 
     example_1, example_2, _ = st.columns([1.4, 1.4, 2])
     example_1.button(
@@ -263,7 +259,7 @@ def seeds_screen():
                 "Column of the second model", titles, key="csv_column_b", on_change=load_scores_csv
             )
 
-    st.header("Settings", divider="gray")
+    style.section(2, "Settings")
 
     paired = st.checkbox(
         "Both models used the same seeds (paired)",
@@ -279,7 +275,7 @@ def seeds_screen():
         confidence = confidence_box("seeds_confidence")
     higher_is_better = direction == "Higher is better"
 
-    st.header("Results", divider="gray")
+    style.section(3, "Results")
 
     if a is None or b is None:
         st.info("Fix the scores marked in red above to see the results.")
@@ -306,7 +302,7 @@ def seeds_screen():
             f"{name_b} is {word} on average, which is {'better' if b_is_better else 'worse'}."
         )
 
-    first, second, third = st.columns(3)
+    first, second, third = st.columns(3, border=True)
     with first:
         st.metric(f"Difference ({name_b} − {name_a})", f"{result.difference:+.{digits}f}")
         st.caption(direction_text)
@@ -320,7 +316,7 @@ def seeds_screen():
         st.metric("p-value", format_p(result.p_value))
         st.caption("How often luck alone gives a gap this big. Below 0.05 is the usual bar.")
 
-    fourth, fifth, _ = st.columns(3)
+    fourth, fifth = st.columns(2, border=True)
     with fourth:
         st.metric("Effect size (Cohen's d)", format_d(result.cohens_d))
         st.caption("The gap in units of run-to-run noise. Around 0.8 or more is large.")
@@ -352,16 +348,18 @@ def seeds_screen():
         if paired
         else "One dot per run. The short line is each model's mean."
     )
-    st.plotly_chart(runs_plot(a, b, name_a, name_b, paired, is_dark(), digits), theme=None)
+    with st.container(border=True):
+        st.plotly_chart(runs_plot(a, b, name_a, name_b, paired, is_dark(), digits), theme=None)
 
     st.subheader("The difference")
     st.caption(
         f"The bar is the {confidence:.0%} confidence interval. "
         "If it does not touch the dashed line, the difference is plausibly real."
     )
-    st.plotly_chart(
-        difference_plot(result, name_a, name_b, is_dark(), decimals=digits), theme=None
-    )
+    with st.container(border=True):
+        st.plotly_chart(
+            difference_plot(result, name_a, name_b, is_dark(), decimals=digits), theme=None
+        )
 
     show_runs_calculator(result, digits)
 
@@ -370,17 +368,18 @@ def seeds_screen():
 
 
 def examples_screen():
-    st.header("Results per test example", divider="gray")
-    st.write(
+    style.section(
+        1,
+        "Results per test example",
         "Upload a CSV file with one row per test example and one column per model: "
         "1 if the model answered that example correctly, 0 if not. "
-        "The column titles become the model names."
+        "The column titles become the model names.",
     )
     st.button("Example: 1,000 test examples", on_click=use_sample_answers)
     upload = st.file_uploader("CSV file", type="csv", key="answers_file")
     confidence = confidence_box("examples_confidence")
 
-    st.header("Results", divider="gray")
+    style.section(2, "Results")
 
     if upload is not None:
         source = upload
@@ -409,7 +408,7 @@ def examples_screen():
     verdict = judge(result, name_a, name_b, more_of="test examples")
     show_verdict(verdict, example_cautions(result))
 
-    first, second, third = st.columns(3)
+    first, second, third = st.columns(3, border=True)
     with first:
         st.metric(f"Accuracy of {name_a}", f"{result.accuracy_a:.1f}%")
         st.caption(
@@ -426,7 +425,7 @@ def examples_screen():
         st.metric(f"Difference ({name_b} − {name_a})", f"{result.difference:+.2f} points")
         st.caption(f"Measured on {table.n:,} test examples.")
 
-    fourth, fifth, sixth = st.columns(3)
+    fourth, fifth, sixth = st.columns(3, border=True)
     with fourth:
         st.metric(
             f"{confidence:.0%} confidence interval",
@@ -465,29 +464,26 @@ def examples_screen():
 
     st.subheader("The accuracies")
     st.caption(f"Each bar is the {confidence:.0%} interval of one model's accuracy.")
-    st.plotly_chart(accuracy_plot(result, name_a, name_b, is_dark()), theme=None)
+    with st.container(border=True):
+        st.plotly_chart(accuracy_plot(result, name_a, name_b, is_dark()), theme=None)
 
     st.subheader("The difference")
     st.caption(
         f"The bar is the {confidence:.0%} confidence interval. "
         "If it does not touch the dashed line, the difference is plausibly real."
     )
-    st.plotly_chart(
-        difference_plot(result, name_a, name_b, is_dark(), unit=" (percentage points)"),
-        theme=None,
-    )
+    with st.container(border=True):
+        st.plotly_chart(
+            difference_plot(result, name_a, name_b, is_dark(), unit=" (percentage points)"),
+            theme=None,
+        )
 
 
 # -------------------------------------------------------------- The page ---
 
 st.set_page_config(page_title="easyCI", page_icon="📊")
-
-st.title("easyCI")
-st.subheader("Is your model's improvement real, or just luck?")
-st.write(
-    "Give easyCI the results of two models, and it tells you how much of the "
-    "difference between them you can trust."
-)
+style.inject_css()
+style.hero()
 
 # Streamlit forgets an input box once it is off screen. Saving each value
 # again keeps what the user typed when they switch between the two modes.
@@ -501,3 +497,5 @@ if mode == SEEDS_MODE:
     seeds_screen()
 else:
     examples_screen()
+
+style.footer()

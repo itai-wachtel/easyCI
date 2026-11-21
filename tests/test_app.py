@@ -35,6 +35,12 @@ def errors(app):
     return [error.value for error in app.error]
 
 
+def verdict(app):
+    """The HTML of the verdict card ("" if the page shows none)."""
+    card = '<div class="eci-verdict '
+    return next((text.value for text in app.markdown if text.value.startswith(card)), "")
+
+
 # --- Mode 1: several runs per model ----------------------------------------
 
 
@@ -154,17 +160,18 @@ def test_changing_a_setting_keeps_the_per_example_results():
 def test_independent_example_is_likely_real():
     app = open_app()
     click(app, "Example: independent runs")
-    assert "Likely real: Model B is better than Model A" in app.success[0].value
+    assert "Likely real: Model B is better than Model A" in verdict(app)
     assert "Model B outperforms Model A by 0.66 on average" in app.code[0].value
-    assert not any("Before you rely on this" in text.value for text in app.markdown)
+    assert "Before you rely on this" not in verdict(app)
 
 
 def test_shared_seeds_example_is_borderline_with_a_caution():
     app = open_app()
     click(app, "Example: shared seeds")
-    assert "Borderline" in app.warning[0].value
-    cautions = next(t.value for t in app.markdown if "Before you rely on this" in t.value)
-    assert "5 paired runs" in cautions and "at least 6 runs" in cautions
+    card = verdict(app)
+    assert "Borderline" in card and "eci-borderline" in card
+    assert "Before you rely on this" in card
+    assert "5 paired runs" in card and "at least 6 runs" in card
     assert "is borderline" in app.code[0].value
 
 
@@ -172,7 +179,7 @@ def test_per_example_example_shows_no_evidence():
     app = open_app()
     app.radio[0].set_value(EXAMPLES_MODE).run()
     click(app, "Example: 1,000 test examples")
-    assert any("No evidence of a difference" in info.value for info in app.info)
+    assert "No evidence of a difference" in verdict(app)
     assert "is not statistically significant" in app.code[0].value
 
 

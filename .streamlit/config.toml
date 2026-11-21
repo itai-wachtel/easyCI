@@ -1,0 +1,31 @@
+# The look of easyCI. Streamlit reads this file when the app starts.
+# Colours are set twice: once for light mode and once for dark mode.
+
+[client]
+toolbarMode = "minimal"  # hide the "Deploy" button and developer menu
+
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+headingFontWeights = [800, 700, 650, 600, 600, 600]
+baseRadius = "0.7rem"
+buttonRadius = "0.7rem"
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#4f46e5"
+backgroundColor = "#f7f8fc"
+secondaryBackgroundColor = "#eef0f8"
+textColor = "#1a1d3a"
+borderColor = "#dfe2ee"
+linkColor = "#4f46e5"
+codeBackgroundColor = "#eef0f8"
+
+[theme.dark]
+primaryColor = "#8b8cff"
+backgroundColor = "#0c0f1e"
+secondaryBackgroundColor = "#161a2e"
+textColor = "#e6e8f4"
+borderColor = "#272c47"
+linkColor = "#a5a6ff"
+codeBackgroundColor = "#161a2e"
